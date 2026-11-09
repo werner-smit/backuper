@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+.pytest_cache/
+packaging/arch/*
+!packaging/arch/PKGBUILD

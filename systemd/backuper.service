@@ -1,0 +1,10 @@
+[Unit]
+Description=backuper: mirror manifest entries to the backup destination
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/backuper backup
+SyslogIdentifier=backuper
+Nice=10
+IOSchedulingClass=idle

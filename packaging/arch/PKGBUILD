@@ -1,0 +1,44 @@
+# Maintainer: Werner <wernerj101@gmail.com>
+pkgname=backuper-git
+_name=backuper
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Manifest-driven rsync backups with a systemd user timer and journal logging"
+arch=(any)
+url="https://github.com/wernerj101/backuper"
+license=(MIT)
+depends=(python python-click python-tomli-w rsync)
+makedepends=(git python-build python-installer python-hatchling)
+provides=("$_name")
+conflicts=("$_name")
+# Builds from the git repo this PKGBUILD lives in (committed HEAD, not the working tree).
+# Switch to "git+$url.git" once it is published.
+source=("$_name::git+file://${startdir%/packaging/arch}")
+sha256sums=(SKIP)
+
+pkgver() {
+  cd "$_name"
+  local base
+  base=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+  printf "%s.r%s.g%s" "$base" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+  cd "$_name"
+  python -m build --wheel --no-isolation
+  for shell in bash zsh fish; do
+    PYTHONPATH=src _BACKUPER_COMPLETE=${shell}_source python -m backuper > "completion.$shell"
+  done
+}
+
+package() {
+  cd "$_name"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 systemd/backuper.service "$pkgdir/usr/lib/systemd/user/backuper.service"
+  install -Dm644 systemd/backuper.timer "$pkgdir/usr/lib/systemd/user/backuper.timer"
+  install -Dm644 completion.bash "$pkgdir/usr/share/bash-completion/completions/backuper"
+  install -Dm644 completion.zsh "$pkgdir/usr/share/zsh/site-functions/_backuper"
+  install -Dm644 completion.fish "$pkgdir/usr/share/fish/vendor_completions.d/backuper.fish"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
