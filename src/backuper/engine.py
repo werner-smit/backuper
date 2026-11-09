@@ -88,6 +88,25 @@ def _parse_stats(output: str) -> dict:
     return stats
 
 
+def _plural(count, singular: str, plural: str | None = None) -> str:
+    try:
+        one = int(str(count).replace(",", "")) == 1
+    except ValueError:
+        one = False
+    return f"{count} {singular if one else (plural or singular + 's')}"
+
+
+def _entries(count: int) -> str:
+    return _plural(count, "entry", "entries")
+
+
+def _size(value: str | None) -> str:
+    """rsync --human-readable prints plain bytes without a unit ("345")."""
+    if not value:
+        return "?"
+    return f"{value}B" if value[-1].isdigit() else value
+
+
 def require_destination(manifest: Manifest) -> Destination:
     if manifest.destination is None:
         raise BackupError("no destination configured; run `backuper setup`")
@@ -238,7 +257,7 @@ def backup(manifest: Manifest, only: list[str] | None = None, dry_run: bool = Fa
     if not entries:
         log.warning("nothing to back up (no enabled entries)")
     started = datetime.now(timezone.utc)
-    log.info("backup started: %d entries -> %s%s", len(entries), dest.host_root(),
+    log.info("backup started: %s -> %s%s", _entries(len(entries)), dest.host_root(),
              " (dry run)" if dry_run else "")
 
     results: list[EntryResult] = []
@@ -256,10 +275,9 @@ def backup(manifest: Manifest, only: list[str] | None = None, dry_run: bool = Fa
                                                  "File list", "sent ", "total size")):
                     echo(line)
         if proc.returncode == 0:
-            log.info("%s: ok, %s of %s files transferred (%s), %s deleted",
-                     entry.path, stats.get("files_transferred", "?"),
-                     stats.get("files_total", "?"), stats.get("transferred_size", "?"),
-                     stats.get("deleted", "0"))
+            log.info("%s: ok, %s transferred (%s), %s deleted",
+                     entry.path, _plural(stats.get("files_transferred", "?"), "file"),
+                     _size(stats.get("transferred_size")), stats.get("deleted", "0"))
             results.append(EntryResult(entry.path, "ok", stats=stats))
         else:
             # 24 = some source files vanished during transfer: data is still usable.
@@ -283,9 +301,9 @@ def backup(manifest: Manifest, only: list[str] | None = None, dry_run: bool = Fa
     publish_metadata(dest, _merged_dest_manifest(manifest, dest, results), last_run)
     failed = [r for r in results if not r.ok]
     if failed:
-        log.error("backup finished with %d of %d entries failing", len(failed), len(results))
+        log.error("backup finished: %d of %s failed", len(failed), _entries(len(results)))
     else:
-        log.info("backup finished: %d entries ok", len(results))
+        log.info("backup finished: %s ok", _entries(len(results)))
     return results
 
 
@@ -342,7 +360,7 @@ def restore(dest: Destination, only: list[str] | None = None, to: str | None = N
         raise BackupError(f"no manifest found at {dest.host_root(host)}/{META_DIR}/")
     # Only the paths matter here; restore whatever is stored, enabled or not.
     entries = select_entries(stored.entries, only) if only else list(stored.entries)
-    log.info("restore started: %d entries from %s to %s%s", len(entries),
+    log.info("restore started: %s from %s to %s%s", _entries(len(entries)),
              dest.host_root(host), to or "original locations", " (dry run)" if dry_run else "")
 
     results = []
@@ -361,8 +379,8 @@ def restore(dest: Destination, only: list[str] | None = None, to: str | None = N
                                                  "File list", "sent ", "total size")):
                     echo(line)
         if proc.returncode == 0:
-            log.info("%s: restored, %s files transferred", entry.path,
-                     stats.get("files_transferred", "?"))
+            log.info("%s: restored, %s transferred", entry.path,
+                     _plural(stats.get("files_transferred", "?"), "file"))
             results.append(EntryResult(entry.path, "ok", stats=stats))
         else:
             msg = f"rsync exit {proc.returncode}: {proc.stderr.strip()[-2000:]}"
