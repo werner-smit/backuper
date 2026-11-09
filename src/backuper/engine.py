@@ -6,7 +6,6 @@ import fcntl
 import json
 import re
 import shutil
-import socket
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -291,7 +290,7 @@ def backup(manifest: Manifest, only: list[str] | None = None, dry_run: bool = Fa
 
     finished = datetime.now(timezone.utc)
     last_run = {
-        "host": socket.gethostname(),
+        "host": paths.hostname(),
         "started": started.isoformat(timespec="seconds"),
         "finished": finished.isoformat(timespec="seconds"),
         "success": all(r.ok for r in results),

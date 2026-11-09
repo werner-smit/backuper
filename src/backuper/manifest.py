@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
-import socket
 import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import tomli_w
+
+from backuper.paths import hostname
 
 DEFAULT_EXCLUDES = [".cache", "node_modules", "__pycache__", "*.tmp"]
 
@@ -54,7 +55,7 @@ class Destination:
         target = self.target.rstrip("/") or "/"
         if not self.host_subdir:
             return target
-        return f"{target}/{host or socket.gethostname()}"
+        return f"{target}/{host or hostname()}"
 
     def to_dict(self) -> dict:
         return {

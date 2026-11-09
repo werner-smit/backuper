@@ -333,7 +333,7 @@ def backup(paths_: tuple[str, ...], dry_run: bool):
               help="Restore under this directory instead of the original locations.")
 @click.option("--from", "from_", metavar="DEST",
               help="Destination to restore from (default: configured target).")
-@click.option("--host", help="Restore another machine's backup (default: this hostname).")
+@click.option("--host", help="Restore another machine's backup (default: this hostname or $BACKUPER_HOST).")
 @click.option("--delete", is_flag=True, help="Delete local files that are not in the backup.")
 @click.option("-n", "--dry-run", is_flag=True, help="Show what would change.")
 @click.option("-l", "--list", "list_only", is_flag=True, help="List stored hosts and entries.")

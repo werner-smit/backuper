@@ -44,7 +44,8 @@ backuper logs -f
 
 * **Manifest:** `~/.config/backuper/manifest.toml`, or `$BACKUPER_MANIFEST` if set.
 * **Layout:** each entry is mirrored with `rsync -a --delete --relative` to
-  `<target>/<hostname>/<absolute path>`. For example, `/home/me/src` ends up at
+  `<target>/<hostname>/<absolute path>`. Set `$BACKUPER_HOST` to use a
+  different folder name than the machine's hostname. For example, `/home/me/src` ends up at
   `~/Nextcloud/backup/myhost/home/me/src`.
 * **Manifest copy:** after each run, the manifest and a `last-run.json` record are
   written to `<target>/<hostname>/.backuper/`.

@@ -19,6 +19,7 @@ def env(tmp_path, monkeypatch):
         monkeypatch.setenv(var, str(tmp_path / sub))
     monkeypatch.setenv("BACKUPER_SYSLOG", "0")
     monkeypatch.delenv("BACKUPER_MANIFEST", raising=False)
+    monkeypatch.delenv("BACKUPER_HOST", raising=False)
     monkeypatch.delenv("JOURNAL_STREAM", raising=False)
     dest = tmp_path / "dest"
     dest.mkdir()
@@ -220,3 +221,12 @@ def test_validation():
         Manifest.loads("[[entries]]\nexclude = []\n")
     with pytest.raises(ManifestError):
         Manifest.loads("not toml [")
+
+
+def test_backuper_host_override(env, monkeypatch):
+    monkeypatch.setenv("BACKUPER_HOST", "laptop")
+    setup_and_add(env)
+    assert run("backup").exit_code == 0
+    assert (env / "dest" / "laptop" / ".backuper" / "manifest.toml").exists()
+    assert not (env / "dest" / HOST).exists()
+    assert "laptop" in run("restore", "--list").output
