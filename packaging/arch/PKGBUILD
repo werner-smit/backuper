@@ -11,20 +11,31 @@ depends=(python python-click python-tomli-w rsync)
 makedepends=(git python-build python-installer python-hatchling)
 provides=("$_name")
 conflicts=("$_name")
-# Builds from the git repo this PKGBUILD lives in (committed HEAD, not the working tree).
-# Switch to "git+$url.git" once it is published.
-source=("$_name::git+file://${startdir%/packaging/arch}")
+
+# Source selection, via environment variables:
+#   BACKUPER_SRC   github (default) | local | <any git URL>
+#                  "local" builds the committed HEAD of the repo this PKGBUILD lives in.
+#   BACKUPER_REF   branch to build (default: the source's default branch / current HEAD)
+# e.g.  BACKUPER_SRC=local makepkg -si
+#       BACKUPER_REF=my-feature makepkg -si
+# Each source gets its own clone dir; makepkg refuses to reuse a clone whose URL changed.
+case "${BACKUPER_SRC:-github}" in
+  github) _srcurl="$url.git";                          _srcdir="$_name" ;;
+  local)  _srcurl="file://${startdir%/packaging/arch}"; _srcdir="$_name-local" ;;
+  *)      _srcurl="$BACKUPER_SRC";                     _srcdir="$_name-custom" ;;
+esac
+source=("$_srcdir::git+$_srcurl${BACKUPER_REF:+#branch=$BACKUPER_REF}")
 sha256sums=(SKIP)
 
 pkgver() {
-  cd "$_name"
+  cd "$_srcdir"
   local base
   base=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
   printf "%s.r%s.g%s" "$base" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
 }
 
 build() {
-  cd "$_name"
+  cd "$_srcdir"
   python -m build --wheel --no-isolation
   for shell in bash zsh fish; do
     PYTHONPATH=src _BACKUPER_COMPLETE=${shell}_source python -m backuper > "completion.$shell"
@@ -32,7 +43,7 @@ build() {
 }
 
 package() {
-  cd "$_name"
+  cd "$_srcdir"
   python -m installer --destdir="$pkgdir" dist/*.whl
   install -Dm644 systemd/backuper.service "$pkgdir/usr/lib/systemd/user/backuper.service"
   install -Dm644 systemd/backuper.timer "$pkgdir/usr/lib/systemd/user/backuper.timer"
