@@ -33,6 +33,7 @@ testpaths = ["tests"]
 name = "cz_conventional_commits"
 version_provider = "uv"          # bumps [project].version and uv.lock
 tag_format = "v$version"
+annotated_tag = true             # so `git push --follow-tags` pushes it
 update_changelog_on_bump = true
 major_version_zero = true        # while 0.x, breaking changes bump minor, not 1.0
 version_files = ["packaging/arch/PKGBUILD:^pkgver="]  # keep PKGBUILD in step
