@@ -83,10 +83,8 @@ mind:
 
 ```sh
 cd packaging/arch
-makepkg -si                              # build from GitHub (default)
-BACKUPER_SRC=local makepkg -si           # build the committed HEAD of this checkout
-BACKUPER_REF=my-branch makepkg -si       # build a specific branch
-BACKUPER_SRC=git@github.com:me/fork.git makepkg -si   # build from any git URL
+makepkg -si            # build GitHub main
+LOCAL=1 makepkg -si    # build this checkout's committed HEAD
 backuper setup
 ```
 

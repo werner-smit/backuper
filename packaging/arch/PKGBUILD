@@ -12,19 +12,16 @@ makedepends=(git python-build python-installer python-hatchling)
 provides=("$_name")
 conflicts=("$_name")
 
-# Source selection, via environment variables:
-#   BACKUPER_SRC   github (default) | local | <any git URL>
-#                  "local" builds the committed HEAD of the repo this PKGBUILD lives in.
-#   BACKUPER_REF   branch to build (default: the source's default branch / current HEAD)
-# e.g.  BACKUPER_SRC=local makepkg -si
-#       BACKUPER_REF=my-feature makepkg -si
-# Each source gets its own clone dir; makepkg refuses to reuse a clone whose URL changed.
-case "${BACKUPER_SRC:-github}" in
-  github) _srcurl="$url.git";                          _srcdir="$_name" ;;
-  local)  _srcurl="file://${startdir%/packaging/arch}"; _srcdir="$_name-local" ;;
-  *)      _srcurl="$BACKUPER_SRC";                     _srcdir="$_name-custom" ;;
-esac
-source=("$_srcdir::git+$_srcurl${BACKUPER_REF:+#branch=$BACKUPER_REF}")
+# Builds GitHub main by default. LOCAL=1 builds the committed HEAD of the
+# checkout this PKGBUILD lives in instead:  LOCAL=1 makepkg -si
+# (separate clone dirs, since makepkg won't reuse a clone whose URL changed)
+if [[ -n $LOCAL ]]; then
+  _srcdir="$_name-local"
+  source=("$_srcdir::git+file://${startdir%/packaging/arch}")
+else
+  _srcdir="$_name"
+  source=("$_srcdir::git+$url.git#branch=main")
+fi
 sha256sums=(SKIP)
 
 pkgver() {
