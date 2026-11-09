@@ -5,6 +5,8 @@ back up. `backuper backup` mirrors them with rsync into a destination folder
 (for example a Nextcloud sync folder), and `backuper restore` copies them back.
 A systemd user timer runs the backup daily, and everything is logged to the journal.
 
+![backuper demo](docs/demo.gif)
+
 ## Quick start
 
 ```sh
