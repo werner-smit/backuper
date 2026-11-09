@@ -18,7 +18,7 @@ Set PlaybackSpeed 1.0
 Hide
 Type `export PATH="$PWD/.venv/bin:$PATH" BACKUPER_SYSLOG=0 BACKUPER_HOST=laptop HOME=/tmp/backuper-demo/home XDG_CONFIG_HOME=/tmp/backuper-demo/home/.config XDG_STATE_HOME=/tmp/backuper-demo/home/.local/state XDG_RUNTIME_DIR=/tmp/backuper-demo/run` Enter
 Type `rm -rf /tmp/backuper-demo && mkdir -p $XDG_RUNTIME_DIR ~/Nextcloud/backup ~/documents ~/projects/app/src ~/projects/app/build && cd ~` Enter
-Type `echo "# notes" > documents/notes.md; echo "todo" > documents/todo.txt; echo "print(1)" > projects/app/src/main.py; echo bin > projects/app/build/app.o` Enter
+Type `echo "# notes" > documents/notes.md; echo "todo" > documents/todo.txt; head -c 1200000 /dev/urandom > documents/report.pdf; head -c 48000 /dev/urandom > projects/app/src/main.py; head -c 9000000 /dev/zero > projects/app/build/app.o` Enter
 Type `export PS1='\[\e[1;34m\]~\[\e[0m\] $ '; clear` Enter
 Show
 

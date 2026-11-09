@@ -27,7 +27,7 @@ backuper logs -f
 | `setup [TARGET]` | set the destination (a folder, or `user@host:path` for rsync over ssh) |
 | `add PATH... [-e PATTERN]` | add entries |
 | `remove PATH... [--purge]` / `rm` | remove entries; `--purge` also deletes the stored copy |
-| `list [-s]` / `ls` | show entries (`-s` adds sizes) |
+| `list [-s]` / `ls` | show entries; `-s` adds sizes (see below) |
 | `enable` / `disable PATH...` | include or skip an entry without removing it |
 | `exclude PATH [PATTERN...] [-r]` | per-entry excludes; `exclude --default ...` sets the global ones |
 | `edit` | edit the manifest in `$EDITOR`; it is validated before saving |
@@ -57,6 +57,19 @@ backuper logs -f
   ```
   Without `--to`, files go back to their original paths, after a confirmation.
   Restore never deletes local files unless `--delete` is given.
+* **Sizes:** `backuper ls --size` measures each entry. It runs an rsync dry run
+  against the destination and walks the stored copy, so it is slow on large trees.
+
+  | column | meaning |
+  |---|---|
+  | `SIZE` | what a backup of the entry holds, with excludes applied |
+  | `FILES` | number of files in it |
+  | `STORED` | what is at the destination now |
+  | `PENDING` | what the next backup would send (new and changed files) |
+
+  `backuper status` shows the total backup size and how much the last run sent,
+  read from the last run's record, so it is instant. Each run's journal line also
+  reports the bytes sent and the size the backup holds.
 * **Missing or empty sources:** if an entry's source is missing or empty (an
   unmounted drive, a moved directory), that entry is skipped. Its stored copy is
   not wiped. The run then exits non-zero, and the error appears in the journal

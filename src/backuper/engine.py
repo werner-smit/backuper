@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import fcntl
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -27,7 +29,7 @@ from backuper.manifest import (
 META_DIR = ".backuper"
 RSYNC = "rsync"
 # -a without owner/group: Nextcloud (and most non-root targets) can't keep them.
-BASE_ARGS = ["-a", "--no-owner", "--no-group", "--human-readable"]
+BASE_ARGS = ["-a", "--no-owner", "--no-group"]
 
 
 class BackupError(Exception):
@@ -71,39 +73,41 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
-def _parse_stats(output: str) -> dict:
-    stats = {}
+def _parse_stats(output: str) -> dict[str, int]:
+    """Integer stats from ``rsync --stats`` (sizes in bytes, counts of regular files)."""
     patterns = {
-        "files_transferred": r"Number of regular files transferred: ([\d,.]+)",
-        "files_total": r"Number of files: ([\d,.]+)",
-        "deleted": r"Number of deleted files: ([\d,.]+)",
-        "transferred_size": r"Total transferred file size: ([^\n]+?)(?: bytes)?\n",
-        "total_size": r"Total file size: ([^\n]+?)(?: bytes)?\n",
+        "files": r"Number of files: [\d,]+ \(reg: ([\d,]+)",
+        "files_transferred": r"Number of regular files transferred: ([\d,]+)",
+        "deleted": r"Number of deleted files: ([\d,]+)",
+        "total_size": r"Total file size: ([\d,]+) bytes",
+        "transferred_size": r"Total transferred file size: ([\d,]+) bytes",
     }
+    stats = {}
     for key, pat in patterns.items():
         m = re.search(pat, output)
         if m:
-            stats[key] = m.group(1).strip()
+            stats[key] = int(m.group(1).replace(",", ""))
+    if "files" not in stats and re.search(r"Number of files: 0\b", output):
+        stats["files"] = 0
     return stats
 
 
+def human_size(n: int | float | None) -> str:
+    if n is None:
+        return "-"
+    for unit in ("B", "K", "M", "G", "T", "P"):
+        if n < 1024 or unit == "P":
+            break
+        n /= 1024
+    return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+
+
 def _plural(count, singular: str, plural: str | None = None) -> str:
-    try:
-        one = int(str(count).replace(",", "")) == 1
-    except ValueError:
-        one = False
-    return f"{count} {singular if one else (plural or singular + 's')}"
+    return f"{count} {singular if count == 1 else (plural or singular + 's')}"
 
 
 def _entries(count: int) -> str:
     return _plural(count, "entry", "entries")
-
-
-def _size(value: str | None) -> str:
-    """rsync --human-readable prints plain bytes without a unit ("345")."""
-    if not value:
-        return "?"
-    return f"{value}B" if value[-1].isdigit() else value
 
 
 def require_destination(manifest: Manifest) -> Destination:
@@ -274,9 +278,11 @@ def backup(manifest: Manifest, only: list[str] | None = None, dry_run: bool = Fa
                                                  "File list", "sent ", "total size")):
                     echo(line)
         if proc.returncode == 0:
-            log.info("%s: ok, %s transferred (%s), %s deleted",
+            log.info("%s: ok, %s (%s) sent, %s deleted; backup holds %s in %s",
                      entry.path, _plural(stats.get("files_transferred", "?"), "file"),
-                     _size(stats.get("transferred_size")), stats.get("deleted", "0"))
+                     human_size(stats.get("transferred_size")), stats.get("deleted", 0),
+                     human_size(stats.get("total_size")),
+                     _plural(stats.get("files", "?"), "file"))
             results.append(EntryResult(entry.path, "ok", stats=stats))
         else:
             # 24 = some source files vanished during transfer: data is still usable.
@@ -326,6 +332,64 @@ def _merged_dest_manifest(local: Manifest, dest: Destination,
     return Manifest(destination=local.destination,
                     default_excludes=list(local.default_excludes),
                     entries=entries)
+
+
+# ---------------------------------------------------------------------------
+# sizes
+
+
+@dataclass
+class EntrySize:
+    size: int | None = None      # bytes that a backup would hold (after excludes)
+    files: int | None = None
+    pending: int | None = None   # bytes the next backup would send
+    stored: int | None = None    # bytes currently at the destination
+    stored_files: int | None = None
+
+
+def entry_size(manifest: Manifest, entry: Entry) -> EntrySize:
+    """Measure an entry: an rsync dry run against the destination, plus a walk of
+    the stored copy (local destinations only). Slow for big trees."""
+    result = EntrySize()
+    dest = require_destination(manifest)
+    if _entry_guard(entry) is None:
+        cmd = [c for c in backup_command(manifest, entry, dry_run=True) if c != "--itemize-changes"]
+        proc = _run(cmd)
+        if proc.returncode in (0, 24):
+            stats = _parse_stats(proc.stdout)
+            result.size = stats.get("total_size")
+            result.files = stats.get("files")
+            result.pending = stats.get("transferred_size")
+    if not dest.remote:
+        stored = Path(f"{dest.host_root()}/{entry.path.lstrip('/')}").expanduser()
+        if stored.exists():
+            result.stored, result.stored_files = _tree_size(stored)
+    return result
+
+
+def _tree_size(root: Path) -> tuple[int, int]:
+    """Total bytes and count of regular files under root (symlinks not followed)."""
+    if root.is_file():
+        return root.stat().st_size, 1
+    total = count = 0
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            try:
+                st = os.lstat(os.path.join(dirpath, name))
+            except OSError:
+                continue
+            if stat.S_ISREG(st.st_mode):
+                total += st.st_size
+                count += 1
+    return total, count
+
+
+def dest_size(dest: Destination) -> tuple[int, int] | None:
+    """Bytes and files under this host's folder at a local destination."""
+    if dest.remote:
+        return None
+    root = Path(dest.host_root()).expanduser()
+    return _tree_size(root) if root.exists() else None
 
 
 # ---------------------------------------------------------------------------

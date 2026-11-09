@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import configparser
 import json
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -59,21 +58,6 @@ def _guess_nextcloud_target() -> str | None:
             if key.endswith("\\localpath") and value:
                 return str(Path(value) / "backup")
     return None
-
-
-def _human(n: float) -> str:
-    for unit in ("B", "K", "M", "G", "T"):
-        if n < 1024 or unit == "T":
-            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
-        n /= 1024
-    return str(n)
-
-
-def _du(path: str) -> str:
-    proc = subprocess.run(["du", "-sb", path], capture_output=True, text=True)
-    if proc.returncode != 0 or not proc.stdout:
-        return "?"
-    return _human(int(proc.stdout.split()[0]))
 
 
 def _report(results: list[engine.EntryResult]) -> None:
@@ -193,31 +177,61 @@ def remove(paths_: tuple[str, ...], purge: bool, yes: bool):
 
 
 @cli.command(name="list")
-@click.option("-s", "--size", is_flag=True, help="Show the size of each source (slow for big trees).")
+@click.option("-s", "--size", is_flag=True,
+              help="Measure sizes: what a backup holds, what is stored, what the next run sends (slow).")
 def list_(size: bool):
-    """Show the manifest entries (alias: ls)."""
+    """Show the manifest entries (alias: ls).
+
+    \b
+    With --size:
+      SIZE     what a backup of the entry holds (excludes applied)
+      FILES    number of files in it
+      STORED   what is at the destination now
+      PENDING  what the next backup would send
+    """
     manifest = load_manifest()
     if manifest.destination:
         click.echo(f"destination: {manifest.destination.host_root()}")
     else:
         click.echo("destination: (not set, run `backuper setup`)")
+        size = False
     if manifest.default_excludes:
         click.echo(f"default excludes: {', '.join(manifest.default_excludes)}")
     if not manifest.entries:
         click.echo("no entries; add some with `backuper add PATH`")
         return
     click.echo()
+
+    width = max(len(e.path) for e in manifest.entries)
+    sizes = {e.path: engine.entry_size(manifest, e) for e in manifest.entries} if size else {}
+    if size:
+        click.echo(click.style(f"        {'PATH':<{width}}  {'SIZE':>7}  {'FILES':>7}  "
+                               f"{'STORED':>7}  {'PENDING':>7}", dim=True))
     for entry in manifest.entries:
-        exists = Path(entry.path).exists()
         flag = click.style("on ", fg="green") if entry.enabled else click.style("off", fg="yellow")
-        line = f"  [{flag}] {entry.path}"
-        if not exists:
+        line = f"  [{flag}] {entry.path:<{width}}" if size else f"  [{flag}] {entry.path}"
+        if size:
+            sz = sizes[entry.path]
+            line += (f"  {engine.human_size(sz.size):>7}  {_count(sz.files):>7}"
+                     f"  {engine.human_size(sz.stored):>7}  {engine.human_size(sz.pending):>7}")
+        if not Path(entry.path).exists():
             line += click.style("  (missing)", fg="red")
-        elif size:
-            line += f"  {_du(entry.path)}"
         if entry.exclude:
             line += click.style(f"  exclude: {', '.join(entry.exclude)}", dim=True)
         click.echo(line)
+    if size and len(manifest.entries) > 1:
+        def total(attr):
+            values = [getattr(sizes[e.path], attr) for e in manifest.entries if e.enabled]
+            values = [v for v in values if v is not None]
+            return sum(values) if values else None
+        click.echo(click.style(
+            f"        {'total (enabled)':<{width}}  {engine.human_size(total('size')):>7}"
+            f"  {_count(total('files')):>7}  {engine.human_size(total('stored')):>7}"
+            f"  {engine.human_size(total('pending')):>7}", bold=True))
+
+
+def _count(n: int | None) -> str:
+    return "-" if n is None else f"{n:,}"
 
 
 def _set_enabled(paths_: tuple[str, ...], enabled: bool) -> None:
@@ -415,6 +429,10 @@ def status():
         state = (click.style("ok", fg="green") if last["success"]
                  else click.style("errors", fg="red"))
         click.echo(f"last run:    {last['finished']}  {state}  ({ok}/{len(last['entries'])} entries ok)")
+        held, files, sent = _last_run_totals(last)
+        if held is not None:
+            click.echo(f"backup size: {engine.human_size(held)} in {_count(files)} files"
+                       f"  (last run sent {engine.human_size(sent)})")
         for e in last["entries"]:
             if e["status"] != "ok":
                 click.echo(f"             {e['status']}: {e['path']}: {e['message'][:200]}")
@@ -427,6 +445,20 @@ def status():
             click.echo(f"next run:    {info['NextElapseUSecRealtime']}")
     else:
         click.echo("timer:       not installed")
+
+
+def _last_run_totals(last: dict) -> tuple[int | None, int | None, int | None]:
+    """Sum the per-entry rsync stats of a last-run record (ints only)."""
+    held = files = sent = 0
+    seen = False
+    for e in last.get("entries", []):
+        st = e.get("stats") or {}
+        if isinstance(st.get("total_size"), int):
+            seen = True
+            held += st["total_size"]
+            files += st.get("files", 0) if isinstance(st.get("files"), int) else 0
+            sent += st.get("transferred_size", 0) if isinstance(st.get("transferred_size"), int) else 0
+    return (held, files, sent) if seen else (None, None, None)
 
 
 @cli.group()

@@ -230,3 +230,44 @@ def test_backuper_host_override(env, monkeypatch):
     assert (env / "dest" / "laptop" / ".backuper" / "manifest.toml").exists()
     assert not (env / "dest" / HOST).exists()
     assert "laptop" in run("restore", "--list").output
+
+
+def test_parse_stats_and_human_size():
+    from backuper.engine import _parse_stats, human_size
+    out = ("Number of files: 4 (reg: 2, dir: 2)\nNumber of deleted files: 1\n"
+           "Number of regular files transferred: 1\nTotal file size: 5,002 bytes\n"
+           "Total transferred file size: 1,234 bytes\n")
+    assert _parse_stats(out) == {"files": 2, "deleted": 1, "files_transferred": 1,
+                                 "total_size": 5002, "transferred_size": 1234}
+    assert human_size(None) == "-"
+    assert human_size(512) == "512B"
+    assert human_size(5002) == "4.9K"
+    assert human_size(3 * 1024**3) == "3.0G"
+
+
+def test_list_size_reports_size_stored_and_pending(env):
+    setup_and_add(env, "-e", "build")
+    (env / "src" / "build" / "big.o").write_bytes(b"x" * 100_000)  # excluded
+    from backuper.engine import entry_size
+    from backuper.paths import manifest_path
+
+    m = Manifest.load(manifest_path())
+    before = entry_size(m, m.entries[0])
+    assert before.files == 2 and before.size == 2  # a.txt + sub/b.txt, *.tmp and build excluded
+    assert before.stored is None and before.pending == 2
+
+    run("backup")
+    (env / "src" / "a.txt").write_text("aaaa")
+    after = entry_size(m, m.entries[0])
+    assert after.stored == 2 and after.stored_files == 2
+    assert after.pending == 4 and after.size == 5
+
+    out = run("ls", "--size").output
+    assert "SIZE" in out and "PENDING" in out
+
+
+def test_status_shows_backup_size(env):
+    setup_and_add(env)
+    run("backup")
+    out = run("status").output
+    assert "backup size:" in out and "files" in out
