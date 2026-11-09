@@ -102,3 +102,24 @@ uv run pytest
 uv is used only for development. The PKGBUILD builds the wheel with
 `python -m build` (using the hatchling backend) and takes its dependencies from
 the Arch repos.
+
+## Commits and releases
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
+`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `chore: ...`. A breaking change
+is marked with `feat!: ...` or a `BREAKING CHANGE:` footer. `uv run cz commit`
+prompts for a message in this format if you want help.
+
+To release, run:
+
+```sh
+uv run cz bump --dry-run   # preview the next version and changelog
+uv run cz bump             # bump pyproject.toml + uv.lock, update CHANGELOG.md, commit, tag vX.Y.Z
+git push --follow-tags
+```
+
+The version is worked out from the commits since the last tag: `fix` gives a
+patch, `feat` a minor and a breaking change a major. While the version is
+0.x, a breaking change bumps the minor version instead (`major_version_zero`).
+The PKGBUILD's `pkgver()` comes from `git describe`: a build of a tagged commit
+is `0.2.0`, and a build three commits later is `0.2.0.r3.gabc1234`.

@@ -14,7 +14,10 @@ dependencies = [
 backuper = "backuper.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "commitizen>=4.19.3",
+    "pytest>=8",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -25,3 +28,10 @@ packages = ["src/backuper"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "uv"          # bumps [project].version and uv.lock
+tag_format = "v$version"
+update_changelog_on_bump = true
+major_version_zero = true        # while 0.x, breaking changes bump minor, not 1.0
